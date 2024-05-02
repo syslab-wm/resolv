@@ -1,4 +1,4 @@
-progs = resolv dnsscan printers service sdprobe
+progs = resolv sdprobe
 
 all: $(progs)
 
