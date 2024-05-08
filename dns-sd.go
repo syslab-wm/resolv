@@ -185,39 +185,41 @@ func (c *Client) GetServiceInstanceInfo(domain string) (*ServiceInstanceInfo, er
 	info.Port = srv.Port
 	info.Target = srv.Target
 
-	// Check if Response includes A/AAAA in the Additional section
-	as := CollectRRs[*dns.A](resp.Extra)
-	for _, a := range as {
-		if a.Hdr.Name != info.Target {
-			continue
+	if info.Target != "." {
+		// Check if Response includes A/AAAA in the Additional section
+		as := CollectRRs[*dns.A](resp.Extra)
+		for _, a := range as {
+			if a.Hdr.Name != info.Target {
+				continue
+			}
+			addr, ok := netip.AddrFromSlice(a.A)
+			if !ok {
+				continue
+			}
+			addrs = append(addrs, addr)
 		}
-		addr, ok := netip.AddrFromSlice(a.A)
-		if !ok {
-			continue
+		aaaas := CollectRRs[*dns.AAAA](resp.Extra)
+		for _, aaaa := range aaaas {
+			if aaaa.Hdr.Name != info.Target {
+				continue
+			}
+			addr, ok := netip.AddrFromSlice(aaaa.AAAA)
+			if !ok {
+				continue
+			}
+			addrs = append(addrs, addr)
 		}
-		addrs = append(addrs, addr)
-	}
-	aaaas := CollectRRs[*dns.AAAA](resp.Extra)
-	for _, aaaa := range aaaas {
-		if aaaa.Hdr.Name != info.Target {
-			continue
-		}
-		addr, ok := netip.AddrFromSlice(aaaa.AAAA)
-		if !ok {
-			continue
-		}
-		addrs = append(addrs, addr)
-	}
 
-	if len(addrs) > 0 {
-		info.Addrs = addrs
-	} else {
-		// If no A/AAAA records in the Additional section, do A/AAAA queries
-
-		// not an error if fails
-		addrs, err := c.GetIPs(info.Target)
-		if err == nil {
+		if len(addrs) > 0 {
 			info.Addrs = addrs
+		} else {
+			// If no A/AAAA records in the Additional section, do A/AAAA queries
+
+			// not an error if fails
+			addrs, err := c.GetIPs(info.Target)
+			if err == nil {
+				info.Addrs = addrs
+			}
 		}
 	}
 

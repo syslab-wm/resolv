@@ -1,6 +1,20 @@
 package main
 
-var Services = []string{
+import (
+	"bufio"
+	"fmt"
+	"math/rand"
+	"os"
+	"slices"
+	"strings"
+
+	"github.com/syslab-wm/mu"
+)
+
+// ServiceNames is the list of default service names.  The function
+// [LoadServiceNamesFromFile] loads a list of names from files and sets this
+// global variable to that new list.
+var ServiceNames = []string{
 	"_afpovertcp._tcp",
 	"_autodiscover._tcp",
 	"_avaya-ep-config._tcp",
@@ -34,8 +48,6 @@ var Services = []string{
 	"_ldap._tcp",
 	"_ldap._tcp.dc._msdcs",
 	"_ldaps._tcp",
-	//"_library._tcp",
-	//"_matrix._tcp",
 	"_minecraft._tcp",
 	"_mongodb._tcp",
 	"_mysql._tcp",
@@ -68,14 +80,56 @@ var Services = []string{
 	"_stun._tcp",
 	"_submission._tcp",
 	"_submissions._tcp",
-	//"_xbmc-events._udp",
-	//"_xbmc-jsonrpc-h._tcp",
-	//"_xbmc-jsonrpc._tcp",
-	//"_xbmc-web._tcp",
 	"_xmpp-client._tcp",
 	"_xmpps-client._tcp",
 	"_xmpp-server._tcp",
 	"_xmpps-server._tcp",
 	"_xmpp._tcp",
 	"_x-puppet._tcp",
+}
+
+func ChooseNRandomServiceNames(r *rand.Rand, n int) []string {
+	numServices := len(ServiceNames)
+	if n > numServices {
+		mu.Panicf("ChooseNRandomServices: can't choose %d services when slice has only %d", n, numServices)
+	}
+
+	indices := r.Perm(numServices)
+	batch := indices[:n]
+	slices.Sort(batch)
+
+	result := make([]string, n)
+	for _, idx := range batch {
+		result = append(result, ServiceNames[idx])
+	}
+
+	return result
+}
+
+func LoadServiceNamesFromFile(path string) error {
+	var names []string
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		name := strings.TrimSpace(line)
+		names = append(names, name)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	if len(names) == 0 {
+		return fmt.Errorf("service file %q does not contain any service names", path)
+	}
+
+	ServiceNames = names
+	return nil
 }

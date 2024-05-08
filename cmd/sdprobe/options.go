@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/syslab-wm/adt/set"
 	"github.com/syslab-wm/mu"
 	"github.com/syslab-wm/netx"
 	"github.com/syslab-wm/resolv"
@@ -38,34 +38,10 @@ query options:
 
     Default: false
 
-  -adflag[=0|1]
-    Sets the AD (authentic data) bit in the query.  This requests the
-    server to validate the DNSSEC records.  If the server validated the
-    records, it returns AD=1 in the response; if it cannot validate the records
-    (or the records are invalid), the server returns AD=0.
-
-    Default: 1
-
   -bufsize B
-    Set the UDP message buffer size advertised using EDNS0 t B bytes.  The maximum
-    and minimum sizes of this buffer are 65535 and 0, respectively.  Values other
-    than 0 will cause an EDNS query to be sent.
-
-  -cdflag[=0|1]
-    Sets (unsets) the CD (checking disabled) bit in the query.  The CD bit
-    in a query indicates that non-DNSSEC-verified data is acceptable to the
-    resolver sending the query.  Resolvers that perform DNSSEC-validation
-    themselves should set the bit to reduce DNS latency time by allowing
-    security aware servers to answer before they have resolved the validity of
-    data.
-
-    Default: 0
-
-  -dnssec[=0|1]
-    Request DNSSEC records be sent by setting the DNSSEC OK bit (DO) in the OPT
-    record in the additional section of the query.
-
-    Default: 0
+    Set the UDP message buffer size advertised using EDNS0 to B bytes.  The
+    maximum and minimum sizes of this buffer are 65535 and 0, respectively.
+    Values other than 0 will cause an EDNS query to be sent.
 
   -https ENDPOINT
     Use DNS over HTTPS (DoH).  Th port number defaults to 443.  The HTTP POST
@@ -114,10 +90,28 @@ query options:
 
     Default: 0
 
-  -rdflag[=0|1]
-    Toggle the RD (recursion desired) bit in the query.
+  -probe PROBE_NAME
+    The probe to run.  Available probes are:
 
-    Default: 1
+      * all
+        All the probes
+
+      * dnssd
+        Probes for browsable DNS-SD records
+
+      * ptr
+        Probes non-browsable DNS-SD records (SRV and TXT records) by trying
+        service names from a list.  See -service-names and -service-names-batch-size
+
+      * srv
+        Probes for SRV recrods by trying service names from a list
+        See -service-names and -service-names-batch-size
+
+      * napatr
+        Probes for NAPTR records
+
+    Multiple probes may be specified in a comma-delimited list (e.g., "dnssd,ptr")
+    By default all probes are run.
 
   -server SERVER
     The nameserver to query.  For Do53 and DoH, SERVER is of the form
@@ -126,6 +120,20 @@ query options:
     for DoH.
 
     The default is the first nameserver in /etc/resolv.conf.
+
+  -service-names SERVICE_NAME_FILE
+    The ptr and srv probes directly query for ~50 popular service names, such
+    as _sip._udp and _ipps._tcp.  You can override this list by specifiy a file
+    that has one service name per line.
+
+  -service-names-batch-size B
+    By default, the ptr and srv probes make queries for all service names
+    (either the hardcoded ones, or the names specified in the -service-names
+    file).  For exploratory analysis, it can be useful to have a large list,
+    and to have each worker randomly draw B names from this list when probing
+    each domain.  This option lets you set the number of names to draw.  By
+    default, the ptr and srv probes use all names in the list when probing a
+    domain.
 
   -subnet ADDR/PREFIX
     Send an EDNS Client Subnet options with the specified IP address or network
@@ -144,79 +152,51 @@ query options:
     number defaults to 853.
 
   -tls-ca CA_FILE
-    By default, certificat authority certificat are loaded from the system's default certificate store.
-    This option allows an alternative CA certificate to be used for TLS validation.  CA_FILE must
-    be in the PM format.
+    By default, certificat authority certificat are loaded from the system's
+    default certificate store.  This option allows an alternative CA
+    certificate to be used for TLS validation.  CA_FILE must be in the PM
+    format.
 
   -tls-hostname HOSTNAME
-    Use th provided HOSTNAME during remote server TLS certificate validation.  Otherwise, theh DNS
-    server name is used.
-
-  -type QTYPE
-    The query type (e.g., A, AAAA, NS)
-
-    Default: A
-
-    In addition to the standard DNS queries, the tool also supports
-    a few meta queries:
-
-      @ips
-        Get the IP addresses for the QNAME (performs both A and
-        a AAAA queries).
-        
-      @nameservers
-        Get the nameservers (their domainnames and IP addresses)
-        that are responsible for QNAME.  This meta-query results
-        in several NS, A, and AAAA queries.
-
-      @services
-        Enumerate the related services for QNAME.  This meta query
-        uses the DNS Service Discovery (DNS-SD) set of DNS queries.
-
-     Finally, a non-standard type can be specified by its numeric value 
-     as TYPE###, e.g.  -type TYPE234.
+    Use th provided HOSTNAME during remote server TLS certificate validation.
+    Otherwise, theh DNS server name is used.
 
 
 examples:
-  $ ./resolv -https -type NS www.cs.wm.edu
+  $ ./sdprobe -server 1.1.1.1 -tcp tranco-1m.txt
 `
 
 type Options struct {
 	// positional
 	inputFile string
 	// general query options
-	four         bool
-	six          bool
-	adflag       bool
-	bufsize      int
-	cdflag       bool
-	dnssec       bool
-	https        string
-	httpsGET     string
-	httpsURL     string // derived
-	httpsUseGET  bool   // derived
-	ignore       bool
-	keepopen     bool
-	maxCNAMEs    int
-	numWorkers   int
-	nsid         bool
-	rdflag       bool
-	server       string
-	subnet       string
-	subnetPrefix netip.Prefix // derived
-	tcp          bool
-	timeout      time.Duration
-	tls          bool
-	tlsCA        string
-	tlsHostname  string
-	qtypeStr     string
-	qtype        uint16 // derived
-}
-
-var metaQueries = map[string]bool{
-	"@IPS":         true,
-	"@NAMESERVERS": true,
-	"@SERVICES":    true,
+	four                  bool
+	six                   bool
+	adflag                bool
+	bufsize               int
+	cdflag                bool
+	dnssec                bool
+	https                 string
+	httpsGET              string
+	httpsURL              string // derived
+	httpsUseGET           bool   // derived
+	ignore                bool
+	keepopen              bool
+	maxCNAMEs             int
+	probe                 string
+	probeNames            *set.Set[string] //derived
+	numWorkers            int
+	nsid                  bool
+	server                string
+	serviceNames          string
+	serviceNamesBatchSize int
+	subnet                string
+	subnetPrefix          netip.Prefix // derived
+	tcp                   bool
+	timeout               time.Duration
+	tls                   bool
+	tlsCA                 string
+	tlsHostname           string
 }
 
 func printUsage() {
@@ -224,17 +204,13 @@ func printUsage() {
 }
 
 func parseOptions() *Options {
-	var ok bool
 	opts := Options{}
 
 	flag.Usage = printUsage
 	// general options
 	flag.BoolVar(&opts.four, "4", false, "")
 	flag.BoolVar(&opts.six, "6", false, "")
-	flag.BoolVar(&opts.adflag, "adflag", true, "")
 	flag.IntVar(&opts.bufsize, "bufsize", 0, "")
-	flag.BoolVar(&opts.cdflag, "cdflag", false, "")
-	flag.BoolVar(&opts.dnssec, "dnssec", false, "")
 	flag.StringVar(&opts.https, "https", "", "")
 	flag.StringVar(&opts.httpsGET, "https-get", "", "")
 	flag.BoolVar(&opts.ignore, "ignore", false, "")
@@ -242,15 +218,16 @@ func parseOptions() *Options {
 	flag.IntVar(&opts.maxCNAMEs, "max-cnames", 0, "")
 	flag.IntVar(&opts.numWorkers, "num-workers", 1, "")
 	flag.BoolVar(&opts.nsid, "nsid", false, "")
-	flag.BoolVar(&opts.rdflag, "rdflag", true, "")
+	flag.StringVar(&opts.probe, "probe", "all", "")
 	flag.StringVar(&opts.server, "server", "", "")
+	flag.StringVar(&opts.serviceNames, "service-names", "", "")
+	flag.IntVar(&opts.serviceNamesBatchSize, "service-names-batch-size", 0, "")
 	flag.StringVar(&opts.subnet, "subnet", "", "")
 	flag.BoolVar(&opts.tcp, "tcp", false, "")
 	flag.DurationVar(&opts.timeout, "timeout", resolv.DefaultTimeout, "")
 	flag.BoolVar(&opts.tls, "tls", false, "")
 	flag.StringVar(&opts.tlsCA, "tls-ca", "", "")
 	flag.StringVar(&opts.tlsHostname, "tls-hostname", "", "")
-	flag.StringVar(&opts.qtypeStr, "type", "A", "")
 
 	flag.Parse()
 
@@ -262,26 +239,6 @@ func parseOptions() *Options {
 
 	if opts.four && opts.six {
 		mu.Fatalf("error: can't specify both -4 and -6")
-	}
-
-	opts.qtypeStr = strings.ToUpper(opts.qtypeStr)
-	if strings.HasPrefix(opts.qtypeStr, "@") {
-		// a "meta-query"
-		if !metaQueries[opts.qtypeStr] {
-			mu.Fatalf("error: invalid (meta query) type %q", opts.qtypeStr)
-		}
-	} else if strings.HasPrefix(opts.qtypeStr, "TYPE") {
-		// a query for a non-standard qtype
-		i, err := strconv.ParseUint(opts.qtypeStr[4:], 10, 16)
-		if err != nil {
-			mu.Fatalf("error: invalid type %q", opts.qtypeStr)
-		}
-		opts.qtype = uint16(i)
-	} else {
-		opts.qtype, ok = dns.StringToType[opts.qtypeStr]
-		if !ok {
-			mu.Fatalf("error: invalid type %q", opts.qtypeStr)
-		}
 	}
 
 	if opts.server == "" {
@@ -311,6 +268,27 @@ func parseOptions() *Options {
 			mu.Fatalf("error: invalid subnet: %v", err)
 		}
 		opts.subnetPrefix = prefix
+	}
+
+	opts.probe = strings.ToLower(opts.probe)
+	names := set.New(strings.Split(opts.probe, ",")...)
+	legit := set.New("all", "dnssd", "ptr", "srv", "naptr")
+	for _, name := range names.Items() {
+		if !legit.Has(name) {
+			mu.Fatalf("invalid probe name: %q", name)
+		}
+	}
+	if names.Has("all") {
+		opts.probeNames = set.New("dnssd", "ptr", "srv", "naptr")
+	} else {
+		opts.probeNames = names
+	}
+
+	if opts.serviceNames != "" {
+		err := LoadServiceNamesFromFile(opts.serviceNames)
+		if err != nil {
+			mu.Fatalf("unable to read service names file: %v", err)
+		}
 	}
 
 	return &opts

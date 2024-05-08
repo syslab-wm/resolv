@@ -119,12 +119,12 @@ func (c *Client) getNS(domain string) ([]string, error) {
 	// check if the query returned RCode success, but failed because there
 	// simply wasn't an answer.  In such a case, see if the Authority section
 	// has an SOA entry, and return the nameserver in that entry
-	if err == ErrRcode {
+	if err != ErrNoData {
 		return nil, err
 	}
 
 	if resp == nil {
-		mu.BUG("expected non-nil Response ")
+		mu.BUG("expected non-nil Response; err=%v (%T)", err, err)
 	}
 
 	soas := CollectRRs[*dns.SOA](resp.Ns)
@@ -168,19 +168,3 @@ func (c *Client) GetNameservers(name string) ([]*Nameserver, error) {
 	mu.BUG("neither addresses nor errors")
 	return nil, nil
 }
-
-// SVCB records for a DNS service identified as dns1.example.com would be queried at _dns.dns1.example.com.
-
-// https://www.rfc-editor.org/rfc/rfc9461.html
-// https://www.rfc-editor.org/rfc/rfc9462.html
-/*
-func (c *Client) GetDoHPath(name string) (string, error) {
-    s := new(dns.SVCB)
-    s.Hdr = dns.RR_Header{Name: ".", Rrtype: dns.TypeSVCB, Class: dns.ClassINET}
-
-    e := new(dns.SVCBAlpn)
-    e.Alphn = []string{"h2", "h3"}
-
-    p := new(nds.SVCBDoHPath)
-}
-*/

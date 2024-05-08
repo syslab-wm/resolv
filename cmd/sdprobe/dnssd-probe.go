@@ -12,12 +12,12 @@ type DNSSDProbeResult struct {
 	ServiceBrowsers       []string
 	DefaultServiceBrowser string
 	LegacyServiceBrowsers []string
-	Services              map[string][]*resolv.ServiceInstanceInfo
+	Services              map[string][]*ServiceInstanceInfoX
 }
 
 func NewDNSSDProbeResult() *DNSSDProbeResult {
 	r := new(DNSSDProbeResult)
-	r.Services = make(map[string][]*resolv.ServiceInstanceInfo)
+	r.Services = make(map[string][]*ServiceInstanceInfoX)
 	return r
 }
 
@@ -86,6 +86,8 @@ func DoDNSSDProbe(c *resolv.Client, domain string) *DNSSDProbeResult {
 				if err != nil {
 					continue
 				}
+				infox := InfoXFromInfo(info)
+				infox.CheckDNSSECValidation(c)
 
 				_, serviceName, _ := resolv.ParseInstanceServiceDomain(instance)
 				if serviceName == "" {
@@ -95,7 +97,7 @@ func DoDNSSDProbe(c *resolv.Client, domain string) *DNSSDProbeResult {
 
 				// TODO: Is it possible that multiple browsers could return the
 				// same service instance?  Should you dedup on instance.Target?
-				r.Services[serviceName] = append(r.Services[serviceName], info)
+				r.Services[serviceName] = append(r.Services[serviceName], infox)
 				foundFlag = true
 			}
 		}
